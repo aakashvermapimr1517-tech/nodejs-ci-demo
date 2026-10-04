@@ -68,4 +68,3 @@ jobs:
             npm install
             pkill -f "node src/index.js" || true
             nohup node src/index.js > app.log 2>&1 &
-```
