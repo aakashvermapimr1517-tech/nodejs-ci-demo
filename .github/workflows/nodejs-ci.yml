@@ -1,70 +1,92 @@
-name: Node.js CI/CD
+name: Node.js CI CD Pipeline
 
 on:
   push:
     branches:
       - main
 
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build and Test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install Dependencies
+        run: npm ci
 
-      - name: Run tests
+      - name: Run Tests
         run: npm test
 
-      - name: Build application
+      - name: Build Application
         run: npm run build
 
-      - name: Upload build artifact
+      - name: Verify Build
+        run: test -f dist/app.js
+
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: nodejs-app
-          path: |
-            src/
-            package.json
-            package-lock.json
-            build.js
+          path: dist/
 
   deploy:
-    runs-on: ubuntu-latest
+    name: Deploy to EC2
     needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Download build artifact
+      - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
           name: nodejs-app
-          path: app
+          path: dist/
 
-      - name: Deploy to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "app/*"
-          target: "/home/${{ secrets.EC2_USERNAME }}/nodejs-ci-demo"
+      - name: Configure SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "EC2SSHKEY">~/.ssh/idrsachmod600~/.ssh/idrsassh-keyscan-H"EC2_HOST" >> ~/.ssh/known_hosts
 
-      - name: Start application on EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/${{ secrets.EC2_USERNAME }}/nodejs-ci-demo
-            npm install
-            pkill -f "node src/index.js" || true
-            nohup node src/index.js > app.log 2>&1 &
+      - name: Copy Application to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+        run: |
+          scp -i ~/.ssh/id_rsa -r dist \
+            "EC2USERNAME@EC2_HOST:/home/ubuntu/nodejs-ci-demo/"
+
+      - name: Restart Application
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            "EC2USERNAME@EC2_HOST" \
+            'cd /home/ubuntu/nodejs-ci-demo &&
+             if pm2 describe nodejs-app >/dev/null 2>&1; then
+               pm2 restart nodejs-app
+             else
+               pm2 start dist/app.js --name nodejs-app
+             fi &&
+             pm2 save'
