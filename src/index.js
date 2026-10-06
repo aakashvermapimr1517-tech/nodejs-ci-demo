@@ -9,8 +9,10 @@ const server = http.createServer((req, res) => {
     res.end(getMessage());
 });
 
-server.listen(3000, "0.0.0.0", () => {
-    console.log("Server running on port 3000");
-});
+if (require.main === module) {
+    server.listen(3000, "0.0.0.0", () => {
+        console.log("Server running on port 3000");
+    });
+}
 
 module.exports = { getMessage };
