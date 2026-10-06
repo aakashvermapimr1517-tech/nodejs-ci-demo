@@ -1,11 +1,4 @@
-const { test } = require("node:test");
-const assert = require("node:assert");
-
-const { getMessage } = require("../src/index");
-
-test("Application should return the welcome message", () => {
-    assert.strictEqual(
-        getMessage(),
-        "Welcome to Node.js CI/CD Pipeline"
-    );
-});
+assert.strictEqual(
+    getMessage(),
+    "Welcome to AWS Continuous Deployment"
+);
