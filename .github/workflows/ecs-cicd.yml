@@ -4,42 +4,32 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
-permissions:
-  contents: read
-  id-token: write
-
 env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-  ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
-  CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: nodejs-ecs-demo
+  ECS_CLUSTER: nodejs-cluster
+  ECS_SERVICE: nodejs-service
+  ECS_TASK_DEFINITION: .aws/task-definition.json
+  CONTAINER_NAME: nodejs-app
 
 jobs:
   ci:
     name: Test Application
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-
       - name: Install Dependencies
         run: npm ci
-
       - name: Run Tests
         run: npm test
-
       - name: Build Application
         run: npm run build
 
@@ -47,15 +37,15 @@ jobs:
     name: Build Docker Image and Deploy to ECS
     needs: ci
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -68,12 +58,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build \
-            -t ECRREGISTRY/ECR_REPOSITORY:$IMAGE_TAG .
-
-          docker push \
-            ECRREGISTRY/ECR_REPOSITORY:IMAGETAGecho"image=ECR_REGISTRY/ECRREPOSITORY:IMAGE_TAG" \
-            >> "$GITHUB_OUTPUT"
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Render ECS Task Definition
         id: task-def
