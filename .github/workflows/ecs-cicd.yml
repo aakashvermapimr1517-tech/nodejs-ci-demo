@@ -1,79 +1,65 @@
-name: Node.js Docker ECS CI CD
+name: Node.js CI CD Pipeline
 
 on:
   push:
     branches:
       - main
+
+  pull_request:
+    branches:
+      - main
+
   workflow_dispatch:
 
-env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY: nodejs-ecs-demo
-  ECS_CLUSTER: nodejs-cluster
-  ECS_SERVICE: nodejs-service
-  ECS_TASK_DEFINITION: .aws/task-definition.json
-  CONTAINER_NAME: nodejs-app
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
-  ci:
-    name: Test Application
+
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
+
     steps:
+
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - name: Install Dependencies
         run: npm ci
+
       - name: Run Tests
         run: npm test
+
       - name: Build Application
         run: npm run build
 
+
   deploy:
-    name: Build Docker Image and Deploy to ECS
-    needs: ci
+    name: AWS Authentication
     runs-on: ubuntu-latest
+    needs: build-and-test
+
     steps:
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::474025757464:role/GitHubActions-ECS-Deploy
+          aws-region: ap-south-1
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Verify AWS Identity
+        run: aws sts get-caller-identity
 
-      - name: Build and Push Docker Image
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Render ECS Task Definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: ${{ env.ECS_TASK_DEFINITION }}
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
-
-      - name: Deploy to Amazon ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+      - name: AWS Authentication Successful
+        run: echo "GitHub Actions successfully connected to AWS!"
