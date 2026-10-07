@@ -1,11 +1,14 @@
 const http = require("http");
 
 function getMessage() {
-    return "Welcome to AWS Continuous Deployment";
+    return "Welcome to Docker and ECS Fargate";
 }
 
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.writeHead(200, {
+        "Content-Type": "text/plain"
+    });
+
     res.end(getMessage());
 });
 
